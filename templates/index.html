@@ -1,0 +1,235 @@
+
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hakuchat – Nemotron AI</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: Arial, sans-serif;
+    }
+
+    .container {
+      max-width: 900px;
+      height: 100vh;
+      height: 100dvh;
+      margin: auto;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    header {
+      border-bottom: 1px solid #30363d;
+      padding-bottom: 15px;
+    }
+
+    h1 { margin: 0 0 8px; color: #58a6ff; }
+
+    .status { color: #8b949e; font-size: 14px; }
+
+    #messages {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 20px 0;
+    }
+
+    .message {
+      max-width: 85%;
+      padding: 14px;
+      margin-bottom: 15px;
+      border-radius: 12px;
+      line-height: 1.6;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .user {
+      background: #1f6feb;
+      margin-left: auto;
+    }
+
+    .assistant {
+      background: #21262d;
+      margin-right: auto;
+    }
+
+    .search-info {
+      padding: 10px;
+      margin: 10px 0;
+      background: #172c25;
+      border-left: 3px solid #3fb950;
+      border-radius: 5px;
+      font-size: 13px;
+    }
+
+    a { color: #79c0ff; }
+
+    form {
+      display: flex;
+      gap: 10px;
+      padding-top: 15px;
+      border-top: 1px solid #30363d;
+    }
+
+    textarea {
+      flex: 1;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #30363d;
+      background: #161b22;
+      color: white;
+      resize: none;
+      font: inherit;
+    }
+
+    button {
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      cursor: pointer;
+    }
+
+    button:disabled { opacity: 0.5; cursor: wait; }
+
+    @media (max-width: 600px) {
+      .container { padding: 10px; }
+      .message { max-width: 95%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header>
+      <h1>Hakuchat</h1>
+      <div class="status">Nemotron AI • Wikipedia-verkkohaku</div>
+    </header>
+
+    <section id="messages" aria-live="polite"></section>
+
+    <form id="chatForm">
+      <textarea id="input" rows="2" maxlength="2000"
+        placeholder="Kirjoita kysymyksesi..."></textarea>
+      <button id="send" type="submit">Lähetä</button>
+    </form>
+  </main>
+
+  <script>
+    const messages = document.getElementById("messages");
+    const form = document.getElementById("chatForm");
+    const input = document.getElementById("input");
+    const sendButton = document.getElementById("send");
+
+    // Lisää viestin turvallisesti ilman raakaa HTML:ää.
+    function addMessage(role, content) {
+      const element = document.createElement("div");
+      element.className = "message " +
+        (role === "user" ? "user" : "assistant");
+
+      // Muodostetaan HTTPS-linkit klikattaviksi.
+      const urlPattern = /https:\/\/[^\s<>"']+/g;
+      const parts = content.split(urlPattern);
+      const urls = content.match(urlPattern) || [];
+
+      parts.forEach((part, index) => {
+        element.appendChild(document.createTextNode(part));
+
+        if (index < urls.length) {
+          const url = urls[index];
+          const link = document.createElement("a");
+          link.href = url;
+          link.textContent = url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          element.appendChild(link);
+        }
+      });
+
+      messages.appendChild(element);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Näytä mallin suorittamat haut.
+    function showSearches(searches) {
+      for (const search of searches) {
+        const element = document.createElement("div");
+        element.className = "search-info";
+        element.textContent =
+          "Verkkohaku: " + search.query +
+          " | Tuloksia: " + (search.results || []).length;
+        messages.appendChild(element);
+      }
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Lähetä viesti Flask-palvelimelle.
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const text = input.value.trim();
+      if (!text || sendButton.disabled) return;
+
+      addMessage("user", text);
+      input.value = "";
+      sendButton.disabled = true;
+
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Palvelinvirhe");
+        }
+
+        showSearches(data.searches || []);
+        addMessage("assistant", data.response || "");
+      } catch (error) {
+        addMessage("assistant", "Virhe: " + error.message);
+      } finally {
+        sendButton.disabled = false;
+        input.focus();
+      }
+    });
+
+    // Enter lähettää, Shift+Enter lisää rivinvaihdon.
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey &&
+          !event.isComposing) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    // Palauta saman selainistunnon viestit.
+    async function loadHistory() {
+      try {
+        const response = await fetch("/api/history");
+        if (!response.ok) return;
+
+        const data = await response.json();
+        for (const message of data.messages || []) {
+          addMessage(message.role, message.content);
+        }
+      } catch (error) {
+        console.error("Historiaa ei voitu ladata.");
+      }
+    }
+
+    loadHistory();
+  </script>
+</body>
+</html>
