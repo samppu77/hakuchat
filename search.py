@@ -91,6 +91,9 @@ def web_search(query: str, max_results: int = 5) -> list[dict]:
         if isinstance(title, str) and isinstance(url, str):
             results.append({"title": title, "url": url})
 
+    # Lokitus hakutuloksista
+    print(f"[SEARCH] Wikipedia-haku: '{query}' -> {len(results)} tulosta", file=sys.stderr)
+
     return results
 
 
