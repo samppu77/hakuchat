@@ -1,0 +1,5 @@
+322ab9d Add documentation and project dependencies
+26170b6 Add Flask server and chat interface
+9828dd5 Add Nemotron tool use loop and error handling
+93f8194 Add Wikipedia web search with curl
+080b57d Initial project setup and agent instructions
